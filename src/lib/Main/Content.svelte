@@ -2,6 +2,7 @@
 	import { SHADOW_ITEM_MARKER_PROPERTY_NAME } from 'svelte-dnd-action';
 	import Button from '$lib/Main/Button.svelte';
 	import PowerButton from '$lib/Main/PowerButton.svelte';
+	import VictronButton from '$lib/Main/VictronButton.svelte';
 	import ConditionalMedia from '$lib/Main/ConditionalMedia.svelte';
 	import PictureElements from '$lib/Main/PictureElements.svelte';
 	import Camera from '$lib/Main/Camera.svelte';
@@ -24,6 +25,8 @@
 	<Button sel={item} {sectionName} />
 {:else if item?.type === 'power_button'}
 	<PowerButton sel={item} {sectionName} />
+{:else if item?.type === 'victron_button'}
+	<VictronButton sel={item} {sectionName} />
 {:else if item?.type === 'conditional_media'}
 	<ConditionalMedia sel={item} />
 {:else if item?.type === 'picture_elements'}

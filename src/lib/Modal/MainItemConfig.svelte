@@ -15,6 +15,7 @@
 
 	import Button from '$lib/Main/Button.svelte';
 	import PowerButton from '$lib/Main/PowerButton.svelte';
+	import VictronButton from '$lib/Main/VictronButton.svelte';
 	import Camera from '$lib/Main/Camera.svelte';
 	import ConditionalMedia from '$lib/Main/ConditionalMedia.svelte';
 	import Empty from '$lib/Main/Empty.svelte';
@@ -98,6 +99,15 @@
 			}
 		},
 		{
+			id: 'victron_button',
+			type: $lang('victron_button'),
+			component: VictronButton,
+			props: {
+				demo: $demo.sensor,
+				sel
+			}
+		},
+		{
 			id: 'camera',
 			type: $lang('camera'),
 			component: Camera,
@@ -155,6 +165,12 @@
 				break;
 			case 'power_button':
 				openModal(() => import('$lib/Modal/PowerButtonConfig.svelte'), {
+					demo: $demo.sensor,
+					sel
+				});
+				break;
+			case 'victron_button':
+				openModal(() => import('$lib/Modal/VictronButtonConfig.svelte'), {
 					demo: $demo.sensor,
 					sel
 				});
@@ -249,7 +265,7 @@
 					<div
 						class="preview"
 						class:camera={id === 'camera'}
-						class:button={id === 'button' || id === 'power_button'}
+						class:button={id === 'button' || id === 'power_button' || id === 'victron_button'}
 					>
 						<svelte:component this={component} {...props} />
 					</div>

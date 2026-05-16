@@ -55,15 +55,16 @@
 	let computedIcon: string;
 
 	/**
-	 * Push the current value of a power-button override field straight into the
-	 * shared `sel` object and notify the dashboard store. We bypass updateObj's
-	 * event-shaped API and write the plain string value, which is what the
-	 * <input bind:value=...> already gives us.
+	 * Push a power-button override field straight into the shared `sel`
+	 * object and notify the dashboard store. We bypass updateObj's
+	 * event-shaped API and write the plain value, which is what
+	 * `<input bind:value=...>` already gives us.
 	 *
-	 * This is the function used by all power-button-specific inputs below.
+	 * Setting `undefined`/empty string deletes the key (back to default).
+	 * Used by all power-button-specific inputs (text, color, checkbox).
 	 */
-	function setField(key: 'power_sensor' | 'on_color' | 'off_color', value: string | undefined) {
-		if (value === undefined || value === '') {
+	function setField(key: string, value: string | boolean | undefined) {
+		if (value === undefined || value === '' || value === false) {
 			delete (sel as any)[key];
 		} else {
 			(sel as any)[key] = value;
@@ -72,7 +73,46 @@
 		$dashboard = $dashboard; // store: notify subscribers
 	}
 
-	$: options = $entityList('');
+	/**
+	 * Entity picker filter: by default we only offer toggleable entities
+	 * (`switch.*`, `light.*`, `input_boolean.*`) that ALSO have a companion
+	 * `sensor.<base>_power` in the states tree — those are the entities a
+	 * `power_button` is meant to control.
+	 *
+	 * Without the domain restriction we would also surface things like
+	 * `update.foo` whenever `sensor.foo_power` happens to exist, which is
+	 * nonsense.
+	 *
+	 * Edge cases handled:
+	 *   - `sel.power_sensor` override → if user picked a custom power sensor,
+	 *     the selected entity_id might not be in the filtered list; we
+	 *     append it so it doesn't vanish from the dropdown.
+	 *   - "Show all entities" toggle (sel.show_all_entities=true) bypasses
+	 *     the filter for power-users.
+	 */
+	const POWER_BUTTON_DOMAINS = ['switch', 'light', 'input_boolean'];
+
+	$: powerCapableOptions = $entityList('').filter((opt: any) => {
+		const dot = opt.id.indexOf('.');
+		if (dot < 1) return false;
+		const domain = opt.id.substring(0, dot);
+		if (!POWER_BUTTON_DOMAINS.includes(domain)) return false;
+		const base = opt.id.substring(dot + 1);
+		return $states?.[`sensor.${base}_power`] !== undefined;
+	});
+
+	$: options = sel?.show_all_entities
+		? $entityList('')
+		: (() => {
+				const filtered = powerCapableOptions;
+				// preserve currently-selected entity even if it doesn't have a companion sensor
+				if (sel?.entity_id && !filtered.some((o: any) => o.id === sel.entity_id)) {
+					const all = $entityList('');
+					const current = all.find((o: any) => o.id === sel.entity_id);
+					if (current) return [...filtered, current].sort((a: any, b: any) => a.id.localeCompare(b.id));
+				}
+				return filtered;
+			})();
 
 	$: template = $templates?.[sel?.id];
 
@@ -141,6 +181,19 @@
 						computedIcon = event?.detail;
 					}}
 				/>
+
+				<!-- Filter status / opt-out toggle -->
+				<label style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem; font-size:0.85rem; opacity:0.75;">
+					<input
+						type="checkbox"
+						checked={sel?.show_all_entities === true}
+						on:change={(e) => setField('show_all_entities', e.currentTarget.checked)}
+					/>
+					{$lang('show_all_entities')}
+					{#if !sel?.show_all_entities}
+						<span style="opacity:0.6;">({powerCapableOptions.length})</span>
+					{/if}
+				</label>
 			</div>
 
 			<button
