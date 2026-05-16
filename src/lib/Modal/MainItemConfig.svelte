@@ -14,6 +14,7 @@
 	} from '$lib/Modal/getRandomEntity';
 
 	import Button from '$lib/Main/Button.svelte';
+	import PowerButton from '$lib/Main/PowerButton.svelte';
 	import Camera from '$lib/Main/Camera.svelte';
 	import ConditionalMedia from '$lib/Main/ConditionalMedia.svelte';
 	import Empty from '$lib/Main/Empty.svelte';
@@ -88,6 +89,15 @@
 			}
 		},
 		{
+			id: 'power_button',
+			type: $lang('power_button'),
+			component: PowerButton,
+			props: {
+				demo: $demo.sensor,
+				sel
+			}
+		},
+		{
 			id: 'camera',
 			type: $lang('camera'),
 			component: Camera,
@@ -139,6 +149,12 @@
 		switch (sel?.type) {
 			case 'button':
 				openModal(() => import('$lib/Modal/ButtonConfig.svelte'), {
+					demo: $demo.sensor,
+					sel
+				});
+				break;
+			case 'power_button':
+				openModal(() => import('$lib/Modal/PowerButtonConfig.svelte'), {
 					demo: $demo.sensor,
 					sel
 				});
@@ -230,7 +246,11 @@
 						{type}
 					</div>
 
-					<div class="preview" class:camera={id === 'camera'} class:button={id === 'button'}>
+					<div
+						class="preview"
+						class:camera={id === 'camera'}
+						class:button={id === 'button' || id === 'power_button'}
+					>
 						<svelte:component this={component} {...props} />
 					</div>
 				</button>

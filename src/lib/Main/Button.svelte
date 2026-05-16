@@ -32,8 +32,62 @@
 
 	$: entity_id = demo || sel?.entity_id;
 	$: template = $templates?.[sel?.id];
-	$: icon = (sel?.template?.icon && template?.icon?.output) || sel?.icon;
-	$: color = (sel?.template?.color && template?.color?.output) || sel?.color;
+
+	/**
+	 * Power-button (`sel.type === 'power_button'`) renders state text + colors
+	 * CLIENT-SIDE rather than round-tripping through HA's template engine.
+	 *
+	 * Why client-side?
+	 *   - instant feedback: editing `on_color` in PowerButtonConfig shows up
+	 *     immediately, no 100-500 ms wait for the websocket round-trip.
+	 *   - no `render_template` subscription leaks / races to fight.
+	 *   - resilient to characters in user values (e.g. '#abcdef') that would
+	 *     need escaping if injected into Jinja source.
+	 *
+	 * Fields read from sel:
+	 *   - sel.power_sensor : override (default 'sensor.<base>_power')
+	 *   - sel.on_color     : override (default 'red')
+	 *   - sel.off_color    : override (default 'grey')
+	 *
+	 * Locale keys (static/translations/<lang>.json):
+	 *   - power_button_on  : "Zapnuto ( {watts} W )"  ({watts} replaced live)
+	 *   - power_button_off : "Vypnuto"
+	 *
+	 * User can still override anything via sel.state / sel.template.state /
+	 * sel.template.color through the existing Templater button — those paths
+	 * fire BEFORE the power-button fallback in the markup below.
+	 */
+	$: isPowerButton = sel?.type === 'power_button' || sel?.auto_power === true;
+
+	$: powerBase = entity_id?.includes('.') ? entity_id.split('.')[1] : entity_id;
+	$: powerSensorId = sel?.power_sensor || (powerBase ? `sensor.${powerBase}_power` : '');
+	$: powerWatts = powerSensorId ? $states?.[powerSensorId]?.state : undefined;
+
+	$: powerOnColor = sel?.on_color || 'red';
+	$: powerOffColor = sel?.off_color || 'grey';
+
+	/**
+	 * The actual background colour to apply for power buttons (live, no HA needed).
+	 */
+	$: powerColor = isPowerButton ? (stateOn ? powerOnColor : powerOffColor) : undefined;
+
+	/**
+	 * The state text for power buttons (live).
+	 * `{watts}` placeholder in the locale string is replaced with the current
+	 * reading from the power sensor; if the sensor is unavailable we show '?'.
+	 */
+	$: powerStateText = isPowerButton
+		? stateOn
+			? $lang('power_button_on').replace('{watts}', String(powerWatts ?? '?'))
+			: $lang('power_button_off')
+		: '';
+
+	// effectiveTemplate = whatever the user has explicitly set in sel.template
+	// (for power_button we DON'T inject Jinja autos — they're computed above).
+	$: effectiveTemplate = sel?.template;
+
+	$: icon = (effectiveTemplate?.icon && template?.icon?.output) || sel?.icon;
+	$: color = (effectiveTemplate?.color && template?.color?.output) || sel?.color;
 	$: marquee = sel?.marquee;
 	$: more_info = sel?.more_info;
 
@@ -82,7 +136,7 @@
 	// icon is image if extension, e.g. test.png
 	$: image = icon?.includes('.');
 
-	$: if (sel?.template?.set_state && template?.set_state?.output) {
+	$: if (effectiveTemplate?.set_state && template?.set_state?.output) {
 		// template
 		stateOn = $onStates?.includes(template?.set_state?.output?.toLocaleLowerCase());
 	} else if (attributes?.hvac_action) {
@@ -104,7 +158,7 @@
 	 */
 	function toggle() {
 		// if service template
-		if (sel?.template?.service && template?.service?.output) {
+		if (effectiveTemplate?.service && template?.service?.output) {
 			try {
 				// template is string, try to parse it
 				const _template = parser.load(template?.service?.output) as {
@@ -174,11 +228,19 @@
 	 */
 	async function handleClickEvent() {
 		if ($editMode) {
-			openModal(() => import('$lib/Modal/ButtonConfig.svelte'), {
-				demo: entity_id,
-				sel,
-				sectionName
-			});
+			if (sel?.type === 'power_button') {
+				openModal(() => import('$lib/Modal/PowerButtonConfig.svelte'), {
+					demo: entity_id,
+					sel,
+					sectionName
+				});
+			} else {
+				openModal(() => import('$lib/Modal/ButtonConfig.svelte'), {
+					demo: entity_id,
+					sel,
+					sectionName
+				});
+			}
 		} else if (more_info === false) {
 			toggle();
 		} else {
@@ -370,7 +432,11 @@
 	 */
 	async function handlePointerEvent() {
 		if ($editMode) {
-			await import('$lib/Modal/ButtonConfig.svelte');
+			if (sel?.type === 'power_button') {
+				await import('$lib/Modal/PowerButtonConfig.svelte');
+			} else {
+				await import('$lib/Modal/ButtonConfig.svelte');
+			}
 		} else {
 			switch (getDomain(sel?.entity_id)) {
 				case 'light':
@@ -394,9 +460,9 @@
 
 	////// templates //////
 
-	$: if ($config?.state === 'RUNNING' && sel?.template) {
+	$: if ($config?.state === 'RUNNING' && effectiveTemplate) {
 		// for each changed entry in template
-		Object.entries(sel?.template as Record<string, string>).forEach(([key, value]) => {
+		Object.entries(effectiveTemplate as Record<string, string>).forEach(([key, value]) => {
 			const compareTemplate = value === template?.[key]?.input;
 			const compareEntityId = sel?.entity_id === template?.[key]?.entity_id;
 			if (compareTemplate && compareEntityId) return;
@@ -404,13 +470,22 @@
 		});
 	}
 
-	let unsubscribe: () => void;
+	// One unsubscribe per template key. Previously the upstream code held a single
+	// `unsubscribe` variable that was overwritten on every subsequent render, so
+	// old subscriptions for the same key (e.g. an outdated color template) kept
+	// running and silently overwrote newer outputs back to old values. Tracking
+	// per-key fixes that.
+	let unsubscribers: Map<string, () => void> = new Map();
 
 	async function renderTemplate(key: string, value: string) {
 		if (!$connection || !sel?.id) return;
 
+		// kill previous subscription for this key, if any
+		unsubscribers.get(key)?.();
+		unsubscribers.delete(key);
+
 		try {
-			unsubscribe = await $connection.subscribeMessage(
+			const unsubscribe = await $connection.subscribeMessage(
 				(response: { result: string } | { error: string; level: 'ERROR' | 'WARNING' }) => {
 					let data: any = {
 						input: value
@@ -439,12 +514,16 @@
 					}
 				}
 			);
+			unsubscribers.set(key, unsubscribe);
 		} catch (error) {
 			console.error('Template error:', error);
 		}
 	}
 
-	onDestroy(() => unsubscribe?.());
+	onDestroy(() => {
+		unsubscribers.forEach((u) => u?.());
+		unsubscribers.clear();
+	});
 </script>
 
 <div
@@ -484,9 +563,9 @@
 			class="icon"
 			data-state={stateOn}
 			style:--icon-color={iconColor}
-			style:background-color={sel?.template?.color && template?.color?.output
+			style:background-color={effectiveTemplate?.color && template?.color?.output
 				? template?.color?.output
-				: undefined}
+				: powerColor}
 			style:background-image={!icon && attributes?.entity_picture
 				? `url(${attributes?.entity_picture})`
 				: image && icon
@@ -520,7 +599,7 @@
 	<div class="right" on:click|stopPropagation={handleEvent} on:keydown role="button" tabindex="0">
 		<!-- NAME -->
 		<div class="name" data-state={stateOn}>
-			{@html (sel?.template?.name && template?.name?.output) ||
+			{@html (effectiveTemplate?.name && template?.name?.output) ||
 				getName(sel, entity, sectionName) ||
 				$lang('unknown')}
 		</div>
@@ -531,20 +610,24 @@
 		<div class="state" data-state={stateOn}>
 			{#if marquee}
 				<div style="width: min-content;" bind:clientWidth={contentWidth}>
-					{#if sel?.state || (sel?.template?.state && template?.state?.output)}
+					{#if sel?.state || (effectiveTemplate?.state && template?.state?.output)}
 						{@html sel?.state || template?.state?.output}
-					{:else if sel?.template?.set_state && template?.set_state?.output}
-						{@html sel?.template?.set_state && $lang(template?.set_state?.output)}
+					{:else if effectiveTemplate?.set_state && template?.set_state?.output}
+						{@html effectiveTemplate?.set_state && $lang(template?.set_state?.output)}
+					{:else if powerStateText}
+						{powerStateText}
 					{:else}
 						<StateLogic {entity_id} selected={sel} {contentWidth} />
 					{/if}
 				</div>
 			{:else}
 				<div style="overflow: hidden; text-overflow: ellipsis;">
-					{#if sel?.state || (sel?.template?.state && template?.state?.output)}
+					{#if sel?.state || (effectiveTemplate?.state && template?.state?.output)}
 						{@html sel?.state || template?.state?.output}
-					{:else if sel?.template?.set_state && template?.set_state?.output}
-						{@html sel?.template?.set_state && $lang(template?.set_state?.output)}
+					{:else if effectiveTemplate?.set_state && template?.set_state?.output}
+						{@html effectiveTemplate?.set_state && $lang(template?.set_state?.output)}
+					{:else if powerStateText}
+						{powerStateText}
 					{:else}
 						<StateLogic {entity_id} selected={sel} {contentWidth} />
 					{/if}
