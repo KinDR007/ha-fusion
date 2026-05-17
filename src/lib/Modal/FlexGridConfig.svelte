@@ -54,9 +54,14 @@
 		| 'state'
 		| 'icon'
 		| 'color'
-		| 'more_info';
+		| 'more_info'
+		| 'font_scale';
 
-	function setCellField(index: number, key: CellKey, value: string | boolean | undefined) {
+	function setCellField(
+		index: number,
+		key: CellKey,
+		value: string | number | boolean | undefined
+	) {
 		if (!Array.isArray((sel as any).cells)) (sel as any).cells = [];
 		while ((sel as any).cells.length <= index) (sel as any).cells.push({});
 		if (value === undefined || value === '') {
@@ -79,7 +84,15 @@
 
 	/** Wipe every field on the cell at the given index — UI 'Clear' button. */
 	function clearCell(index: number) {
-		const keys: CellKey[] = ['entity_id', 'label', 'state', 'icon', 'color', 'more_info'];
+		const keys: CellKey[] = [
+			'entity_id',
+			'label',
+			'state',
+			'icon',
+			'color',
+			'more_info',
+			'font_scale'
+		];
 		for (const k of keys) {
 			setCellField(index, k, undefined);
 		}
@@ -204,6 +217,25 @@
 					{#each [1, 2, 3, 4, 5, 6, 7, 8] as n}
 						<option value={n}>{n}</option>
 					{/each}
+				</select>
+			</label>
+
+			<label>
+				<span>{$lang('font_size') || 'Font size'}</span>
+				<select
+					value={sel?.font_scale || 1}
+					on:change={(e) => {
+						const v = Number(e.currentTarget.value);
+						setField('font_scale', v === 1 ? undefined : v);
+					}}
+				>
+					<option value={0.85}>0.85×</option>
+					<option value={1}>1× (default)</option>
+					<option value={1.15}>1.15×</option>
+					<option value={1.3}>1.3×</option>
+					<option value={1.5}>1.5×</option>
+					<option value={1.75}>1.75×</option>
+					<option value={2}>2×</option>
 				</select>
 			</label>
 		</div>
@@ -420,6 +452,29 @@
 				</button>
 			</div>
 
+			<h3>{$lang('font_size') || 'Font size'}</h3>
+			<select
+				class="font-scale-select"
+				value={cell?.font_scale ?? ''}
+				on:change={(e) => {
+					const v = e.currentTarget.value;
+					setCellField(
+						activeCellTab,
+						'font_scale',
+						v === '' ? undefined : Number(v)
+					);
+				}}
+			>
+				<option value="">{$lang('inherit') || 'Inherit'}</option>
+				<option value={0.85}>0.85×</option>
+				<option value={1}>1×</option>
+				<option value={1.15}>1.15×</option>
+				<option value={1.3}>1.3×</option>
+				<option value={1.5}>1.5×</option>
+				<option value={1.75}>1.75×</option>
+				<option value={2}>2×</option>
+			</select>
+
 			{#if cell?.entity_id}
 				<button
 					class="clear-cell"
@@ -450,13 +505,21 @@
 		font-size: 0.85rem;
 	}
 
-	.dim-grid select {
+	.dim-grid select,
+	.font-scale-select {
 		padding: 0.45rem 0.5rem;
 		background: rgba(0, 0, 0, 0.25);
 		color: inherit;
 		border: 1px solid rgba(255, 255, 255, 0.15);
 		border-radius: 0.4rem;
 		font-family: inherit;
+	}
+
+	.font-scale-select {
+		display: block;
+		width: 100%;
+		max-width: 14rem;
+		margin-bottom: 0.6rem;
 	}
 
 	/* Tab row */

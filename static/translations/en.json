@@ -439,5 +439,7 @@
 	"energy_total": "Total energy",
 	"energy_sensor": "Energy sensor (kWh)",
 	"meter_mode": "meter mode",
-	"power": "Power"
+	"power": "Power",
+	"font_size": "Font size",
+	"inherit": "Inherit"
 }

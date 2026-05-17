@@ -276,6 +276,7 @@
 					tabindex={clickable ? 0 : -1}
 					role={clickable ? 'button' : undefined}
 					style:--cell-color={renderedColor || cell.color || ''}
+					style:--fg-font-scale={cell.font_scale || sel?.font_scale || ''}
 					on:click|stopPropagation={() => {
 						if ($editMode) handleContainerClick();
 						else if (clickable) handleCellClick(cell);
@@ -428,7 +429,7 @@
 	/* Icon circle — mirrors Button.svelte styling. Custom on-state color
 	   from `cell.color` (passed as --cell-color CSS var) wins over default. */
 	.cell-icon {
-		--icon-size: 1.6rem;
+		--icon-size: calc(1.6rem * var(--fg-font-scale, 1));
 		width: var(--icon-size);
 		height: var(--icon-size);
 		display: inline-flex;
@@ -473,7 +474,7 @@
 	}
 
 	.cell-label {
-		font-size: 0.7rem;
+		font-size: calc(0.7rem * var(--fg-font-scale, 1));
 		opacity: 0.7;
 		color: var(--theme-button-state-color-off);
 		white-space: nowrap;
@@ -482,7 +483,7 @@
 	}
 
 	.cell-value {
-		font-size: 0.92rem;
+		font-size: calc(0.92rem * var(--fg-font-scale, 1));
 		font-weight: 600;
 		color: var(--theme-button-state-color-off);
 		white-space: nowrap;
