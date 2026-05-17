@@ -134,7 +134,7 @@
 		if ($editMode) {
 			openModal(() => import('$lib/Modal/TempHumiButtonConfig.svelte'), { sel, sectionName });
 		} else if (entity_id) {
-			await openEntityModal({ id: sel?.id, entity_id });
+			await openEntityModal({ id: sel?.id, entity_id, name: sel?.name });
 		}
 	}
 

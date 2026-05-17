@@ -12,7 +12,10 @@
 import { openModal } from 'svelte-modals';
 import { getDomain } from '$lib/Utils';
 
-export async function openEntityModal(sel: { id?: any; entity_id?: string }, extras: any = {}) {
+export async function openEntityModal(
+	sel: { id?: any; entity_id?: string; name?: string },
+	extras: any = {}
+) {
 	const domain = getDomain(sel?.entity_id);
 
 	const open = (loader: () => Promise<any>, props: any) => openModal(loader, props);

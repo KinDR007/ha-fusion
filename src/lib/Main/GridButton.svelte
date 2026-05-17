@@ -181,7 +181,7 @@
 			callService($connection, domain, svc, { entity_id: eid });
 			return;
 		}
-		await openEntityModal({ id: sel?.id, entity_id: eid });
+		await openEntityModal({ id: sel?.id, entity_id: eid, name: cell?.label });
 	}
 
 </script>
