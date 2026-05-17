@@ -19,6 +19,7 @@
 	import GridButton from '$lib/Main/GridButton.svelte';
 	import InfoGrid from '$lib/Main/InfoGrid.svelte';
 	import FlexGrid from '$lib/Main/FlexGrid.svelte';
+	import TempHumiButton from '$lib/Main/TempHumiButton.svelte';
 	import Camera from '$lib/Main/Camera.svelte';
 	import ConditionalMedia from '$lib/Main/ConditionalMedia.svelte';
 	import Empty from '$lib/Main/Empty.svelte';
@@ -135,6 +136,14 @@
 			}
 		},
 		{
+			id: 'temp_humi_button',
+			type: $lang('temp_humi_button'),
+			component: TempHumiButton,
+			props: {
+				sel
+			}
+		},
+		{
 			id: 'camera',
 			type: $lang('camera'),
 			component: Camera,
@@ -210,6 +219,9 @@
 				break;
 			case 'flex_grid':
 				openModal(() => import('$lib/Modal/FlexGridConfig.svelte'), { sel });
+				break;
+			case 'temp_humi_button':
+				openModal(() => import('$lib/Modal/TempHumiButtonConfig.svelte'), { sel });
 				break;
 			case 'camera':
 				openModal(() => import('$lib/Modal/CameraConfig.svelte'), {
@@ -306,7 +318,8 @@
 							id === 'victron_button' ||
 							id === 'grid_button' ||
 							id === 'info_grid' ||
-							id === 'flex_grid'}
+							id === 'flex_grid' ||
+							id === 'temp_humi_button'}
 					>
 						<svelte:component this={component} {...props} />
 					</div>

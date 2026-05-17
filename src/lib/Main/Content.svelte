@@ -6,6 +6,7 @@
 	import GridButton from '$lib/Main/GridButton.svelte';
 	import InfoGrid from '$lib/Main/InfoGrid.svelte';
 	import FlexGrid from '$lib/Main/FlexGrid.svelte';
+	import TempHumiButton from '$lib/Main/TempHumiButton.svelte';
 	import ConditionalMedia from '$lib/Main/ConditionalMedia.svelte';
 	import PictureElements from '$lib/Main/PictureElements.svelte';
 	import Camera from '$lib/Main/Camera.svelte';
@@ -42,6 +43,8 @@
 	<InfoGrid sel={item} {sectionName} />
 {:else if item?.type === 'flex_grid'}
 	<FlexGrid sel={item} {sectionName} />
+{:else if item?.type === 'temp_humi_button'}
+	<TempHumiButton sel={item} {sectionName} />
 {:else if item?.type === 'conditional_media'}
 	<ConditionalMedia sel={item} />
 {:else if item?.type === 'picture_elements'}
