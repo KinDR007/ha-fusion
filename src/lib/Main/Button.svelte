@@ -18,6 +18,7 @@
 		calendarFirstDay
 	} from '$lib/Stores';
 	import { getDomain, getName, getTogglableService } from '$lib/Utils';
+	import { derivePowerCompanions } from '$lib/Constants/Power';
 	import Icon, { loadIcon } from '@iconify/svelte';
 	import { callService, type HassEntity } from 'home-assistant-js-websocket';
 	import { marked } from 'marked';
@@ -59,27 +60,64 @@
 	 */
 	$: isPowerButton = sel?.type === 'power_button' || sel?.auto_power === true;
 
-	$: powerBase = entity_id?.includes('.') ? entity_id.split('.')[1] : entity_id;
-	$: powerSensorId = sel?.power_sensor || (powerBase ? `sensor.${powerBase}_power` : '');
+	/**
+	 * Power-button supports two modes:
+	 *   • Switch mode  — entity_id is a toggleable (switch.*, light.*),
+	 *     "on" is derived from the entity state.
+	 *   • Meter mode   — entity_id is a sensor.* (power or energy);
+	 *     "on" is derived from `current W > on_threshold` so an idle
+	 *     meter tile still goes grey when the appliance is off.
+	 * The companion power / energy sensors are resolved via a shared
+	 * helper that strips well-known suffixes and probes the states tree.
+	 */
+	/**
+	 * Templated power/energy-sensor overrides take precedence over the
+	 * statically configured ones, so a user can write
+	 *   {{ 'sensor.dryer_power' if states('switch.dryer') == 'on' else 'sensor.other_power' }}
+	 * in the Templater modal and dynamically swap sources.
+	 */
+	$: powerSensorTemplated =
+		(effectiveTemplate?.power_sensor && template?.power_sensor?.output) || undefined;
+	$: energySensorTemplated =
+		(effectiveTemplate?.energy_sensor && template?.energy_sensor?.output) || undefined;
+
+	$: powerCompanions = derivePowerCompanions(entity_id, $states, {
+		power_sensor: powerSensorTemplated || sel?.power_sensor,
+		energy_sensor: energySensorTemplated || sel?.energy_sensor
+	});
+	$: powerSensorId = powerCompanions.powerSensor;
 	$: powerWatts = powerSensorId ? $states?.[powerSensorId]?.state : undefined;
+	$: isMeterMode = isPowerButton && powerCompanions.meterMode;
 
 	$: powerOnColor = sel?.on_color || 'red';
 	$: powerOffColor = sel?.off_color || 'grey';
+	$: powerOnThreshold = Number(sel?.on_threshold ?? 1);
+
+	/**
+	 * Effective on/off state for the power-button tile only. Falls back
+	 * to the generic stateOn (true when entity state is in onStates) for
+	 * the original switch mode.
+	 */
+	$: powerStateOn = isMeterMode
+		? Number.isFinite(Number(powerWatts)) && Number(powerWatts) > powerOnThreshold
+		: stateOn;
 
 	/**
 	 * The actual background colour to apply for power buttons (live, no HA needed).
 	 */
-	$: powerColor = isPowerButton ? (stateOn ? powerOnColor : powerOffColor) : undefined;
+	$: powerColor = isPowerButton ? (powerStateOn ? powerOnColor : powerOffColor) : undefined;
 
 	/**
 	 * The state text for power buttons (live).
-	 * `{watts}` placeholder in the locale string is replaced with the current
-	 * reading from the power sensor; if the sensor is unavailable we show '?'.
+	 *   • Switch mode: locale string with {watts} placeholder
+	 *   • Meter mode:  raw "<W> W" reading
 	 */
 	$: powerStateText = isPowerButton
-		? stateOn
-			? $lang('power_button_on').replace('{watts}', String(powerWatts ?? '?'))
-			: $lang('power_button_off')
+		? isMeterMode
+			? `${powerWatts ?? '?'} W`
+			: powerStateOn
+				? $lang('power_button_on').replace('{watts}', String(powerWatts ?? '?'))
+				: $lang('power_button_off')
 		: '';
 
 	// effectiveTemplate = whatever the user has explicitly set in sel.template

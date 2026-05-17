@@ -325,6 +325,134 @@
 					<span class="red">entity_id</span>
 					<span class="yellow">&rbrace;&rbrace;</span>
 				</button>
+			{:else if type === 'power_sensor'}
+				<button
+					class="template-example"
+					on:click={() => {
+						$pasteContent = `sensor.{{ entity_id.split('.')[1] }}_power`;
+					}}
+					use:Ripple={$ripple}
+				>
+					sensor.
+					<span class="yellow">&lbrace;&lbrace;</span>
+					<span class="red">entity_id.split(<span class="green">'.'</span>)[1]</span>
+					<span class="yellow">&rbrace;&rbrace;</span>_power
+				</button>
+
+				<button
+					class="template-example"
+					on:click={() => {
+						$pasteContent = `{% if is_state('switch.dryer', 'on') %}
+  sensor.dryer_power
+{% else %}
+  sensor.washer_power
+{% endif %}`;
+					}}
+					use:Ripple={$ripple}
+				>
+					<span class="yellow">&lbrace;%</span>
+					<span class="purple">if</span>
+					<span class="red">
+						is_state(<span class="green">'switch.dryer'</span>,
+						<span class="green">'on'</span>)
+					</span>
+					<span class="yellow">%&rbrace;</span>
+					sensor.dryer_power
+					<span class="yellow">&lbrace;%</span>
+					<span class="purple">else</span>
+					<span class="yellow">%&rbrace;</span>
+					sensor.washer_power
+					<span class="yellow">&lbrace;%</span>
+					<span class="purple">endif</span>
+					<span class="yellow">%&rbrace;</span>
+				</button>
+
+				<button
+					class="template-example"
+					on:click={() => {
+						$pasteContent = `{% set candidates = [
+  'sensor.shelly_em_power',
+  'sensor.smart_plug_power',
+] %}
+{{ candidates | select('in', states.sensor | map(attribute='entity_id') | list) | first | default('') }}`;
+					}}
+					use:Ripple={$ripple}
+				>
+					<span class="yellow">&lbrace;%</span>
+					<span class="purple">set</span>
+					<span class="red">candidates = [<span class="green">'sensor.…_power'</span>, …]</span>
+					<span class="yellow">%&rbrace;</span>
+					<span class="yellow">&lbrace;&lbrace;</span>
+					<span class="red">candidates | select(…) | first</span>
+					<span class="yellow">&rbrace;&rbrace;</span>
+				</button>
+			{:else if type === 'energy_sensor'}
+				<button
+					class="template-example"
+					on:click={() => {
+						$pasteContent = `sensor.{{ entity_id.split('.')[1] }}_energy`;
+					}}
+					use:Ripple={$ripple}
+				>
+					sensor.
+					<span class="yellow">&lbrace;&lbrace;</span>
+					<span class="red">entity_id.split(<span class="green">'.'</span>)[1]</span>
+					<span class="yellow">&rbrace;&rbrace;</span>_energy
+				</button>
+
+				<button
+					class="template-example"
+					on:click={() => {
+						$pasteContent = `{% if now().hour < 6 %}
+  sensor.{{ entity_id.split('.')[1] }}_total_energy
+{% else %}
+  sensor.{{ entity_id.split('.')[1] }}_today_energy
+{% endif %}`;
+					}}
+					use:Ripple={$ripple}
+				>
+					<span class="yellow">&lbrace;%</span>
+					<span class="purple">if</span>
+					<span class="red">
+						now().hour &lt; <span class="green">6</span>
+					</span>
+					<span class="yellow">%&rbrace;</span>
+					…_total_energy
+					<span class="yellow">&lbrace;%</span>
+					<span class="purple">else</span>
+					<span class="yellow">%&rbrace;</span>
+					…_today_energy
+					<span class="yellow">&lbrace;%</span>
+					<span class="purple">endif</span>
+					<span class="yellow">%&rbrace;</span>
+				</button>
+
+				<button
+					class="template-example"
+					on:click={() => {
+						$pasteContent = `{% if states('sensor.dryer_energy') | float(0) > 0 %}
+  sensor.dryer_energy
+{% else %}
+  sensor.dryer_total_energy
+{% endif %}`;
+					}}
+					use:Ripple={$ripple}
+				>
+					<span class="yellow">&lbrace;%</span>
+					<span class="purple">if</span>
+					<span class="red">
+						states(<span class="green">'sensor.…_energy'</span>) | float(0) &gt; 0
+					</span>
+					<span class="yellow">%&rbrace;</span>
+					sensor.dryer_energy
+					<span class="yellow">&lbrace;%</span>
+					<span class="purple">else</span>
+					<span class="yellow">%&rbrace;</span>
+					sensor.dryer_total_energy
+					<span class="yellow">&lbrace;%</span>
+					<span class="purple">endif</span>
+					<span class="yellow">%&rbrace;</span>
+				</button>
 			{/if}
 		</div>
 

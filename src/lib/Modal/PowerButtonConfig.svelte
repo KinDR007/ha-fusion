@@ -29,6 +29,12 @@
 	import InputClear from '$lib/Components/InputClear.svelte';
 	import ConfigButtons from '$lib/Modal/ConfigButtons.svelte';
 	import { updateObj, getDomain, getName, getTogglableService } from '$lib/Utils';
+	import {
+		isPowerButtonCapable,
+		derivePowerCompanions,
+		listPowerSensorOptions,
+		listEnergySensorOptions
+	} from '$lib/Constants/Power';
 	import type { ButtonItem } from '$lib/Types';
 	import { openModal } from 'svelte-modals';
 	import parser from 'js-yaml';
@@ -36,6 +42,7 @@
 	export let isOpen: boolean;
 	export let sel: ButtonItem & {
 		power_sensor?: string;
+		energy_sensor?: string;
 		on_color?: string;
 		off_color?: string;
 	};
@@ -74,32 +81,26 @@
 	}
 
 	/**
-	 * Entity picker filter: by default we only offer toggleable entities
-	 * (`switch.*`, `light.*`, `input_boolean.*`) that ALSO have a companion
-	 * `sensor.<base>_power` in the states tree — those are the entities a
-	 * `power_button` is meant to control.
+	 * Entity picker filter — accepts two kinds of entities:
 	 *
-	 * Without the domain restriction we would also surface things like
-	 * `update.foo` whenever `sensor.foo_power` happens to exist, which is
-	 * nonsense.
+	 *   1. Toggleable (`switch.*`, `light.*`, `input_boolean.*`) that has a
+	 *      companion `sensor.<base>_power` (the classic power_button use case
+	 *      — switch the outlet on/off and read consumption).
 	 *
-	 * Edge cases handled:
-	 *   - `sel.power_sensor` override → if user picked a custom power sensor,
-	 *     the selected entity_id might not be in the filtered list; we
-	 *     append it so it doesn't vanish from the dropdown.
+	 *   2. A `sensor.*` with device_class `power` or `energy` (or matching
+	 *      unit / suffix). This is the "meter mode": passive measurement
+	 *      device without a switch, just a W / kWh reading.
+	 *
+	 * Edge cases:
+	 *   - `sel.power_sensor` / `sel.energy_sensor` overrides — keep the
+	 *     currently-selected entity_id in the list even if it doesn't pass
+	 *     the filter, so it doesn't vanish from the dropdown.
 	 *   - "Show all entities" toggle (sel.show_all_entities=true) bypasses
 	 *     the filter for power-users.
 	 */
-	const POWER_BUTTON_DOMAINS = ['switch', 'light', 'input_boolean'];
-
-	$: powerCapableOptions = $entityList('').filter((opt: any) => {
-		const dot = opt.id.indexOf('.');
-		if (dot < 1) return false;
-		const domain = opt.id.substring(0, dot);
-		if (!POWER_BUTTON_DOMAINS.includes(domain)) return false;
-		const base = opt.id.substring(dot + 1);
-		return $states?.[`sensor.${base}_power`] !== undefined;
-	});
+	$: powerCapableOptions = $entityList('').filter((opt: any) =>
+		isPowerButtonCapable(opt.id, $states)
+	);
 
 	$: options = sel?.show_all_entities
 		? $entityList('')
@@ -117,8 +118,18 @@
 	$: template = $templates?.[sel?.id];
 
 	// default placeholders for the new fields, derived from entity_id
-	$: derivedBase = entity_id?.includes('.') ? entity_id.split('.')[1] : entity_id;
-	$: derivedPowerSensor = derivedBase ? `sensor.${derivedBase}_power` : '';
+	$: derivedCompanions = derivePowerCompanions(entity_id, $states);
+	$: derivedPowerSensor = derivedCompanions.powerSensor;
+	$: derivedEnergySensor = derivedCompanions.energySensor;
+	$: isMeterMode = derivedCompanions.meterMode;
+
+	/**
+	 * `<Select>` option lists for the two sensor fields. Sorted so the
+	 * sensors that share the picked entity's base appear first — picking
+	 * `switch.dryer` puts `sensor.dryer_power` at the top.
+	 */
+	$: powerSensorOptions = listPowerSensorOptions($states, derivedCompanions.base);
+	$: energySensorOptions = listEnergySensorOptions($states, derivedCompanions.base);
 
 	function set(key: string, event?: any) {
 		// IMPORTANT: keep mutating the SAME object reference. The `sel` passed
@@ -366,26 +377,85 @@
 
 		<!-- ──── Power button specific fields ──── -->
 
-		<h2>{$lang('power_sensor')}</h2>
+		<h2>
+			{$lang('power_sensor')}
+			{#if isMeterMode}
+				<small style="opacity:0.55; font-weight:400; font-size:0.78rem;">
+					— {$lang('meter_mode') || 'meter mode'}
+				</small>
+			{/if}
+		</h2>
 
-		<div class="icon-gallery-container">
-			<InputClear
-				condition={sel?.power_sensor}
-				on:clear={() => setField('power_sensor', undefined)}
-				let:padding
-			>
-				<input
-					name={$lang('power_sensor')}
-					class="input"
-					type="text"
-					placeholder={derivedPowerSensor || 'sensor.<base>_power'}
-					autocomplete="off"
-					spellcheck="false"
+		<div style="display: flex; gap: 0.8rem;">
+			<div class="full-width">
+				<Select
+					options={powerSensorOptions}
+					placeholder={(sel?.template?.power_sensor && template?.power_sensor?.output) ||
+						derivedPowerSensor ||
+						'sensor.<base>_power'}
 					value={sel?.power_sensor || ''}
-					on:input={(e) => setField('power_sensor', e.currentTarget.value)}
-					style:padding
+					on:change={(event) => {
+						if (event?.detail === null) return;
+						setField('power_sensor', event.detail || undefined);
+					}}
+					computeIcons={true}
 				/>
-			</InputClear>
+			</div>
+			<button
+				use:Ripple={$ripple}
+				title={$lang('template')}
+				class="icon-gallery"
+				class:template-active={sel?.template?.power_sensor && template?.power_sensor?.output}
+				on:click={() => {
+					if (!sel?.id) return;
+					if (!sel.template) sel.template = {};
+					openModal(() => import('$lib/Modal/Templater.svelte'), {
+						sel,
+						type: 'power_sensor'
+					});
+					$dashboard = $dashboard;
+				}}
+				style:padding="0.85rem"
+			>
+				<Icon icon="ph:brackets-curly-bold" height="none" />
+			</button>
+		</div>
+
+		<h2>{$lang('energy_sensor') || 'Energy sensor (kWh)'}</h2>
+
+		<div style="display: flex; gap: 0.8rem;">
+			<div class="full-width">
+				<Select
+					options={energySensorOptions}
+					placeholder={(sel?.template?.energy_sensor && template?.energy_sensor?.output) ||
+						derivedEnergySensor ||
+						'sensor.<base>_energy'}
+					value={sel?.energy_sensor || ''}
+					on:change={(event) => {
+						if (event?.detail === null) return;
+						setField('energy_sensor', event.detail || undefined);
+					}}
+					computeIcons={true}
+				/>
+			</div>
+			<button
+				use:Ripple={$ripple}
+				title={$lang('template')}
+				class="icon-gallery"
+				class:template-active={sel?.template?.energy_sensor && template?.energy_sensor?.output}
+				on:click={() => {
+					if (!sel?.id) return;
+					if (!sel.template) sel.template = {};
+					openModal(() => import('$lib/Modal/Templater.svelte'), {
+						sel,
+						type: 'energy_sensor'
+					});
+					$dashboard = $dashboard;
+				}}
+				style:padding="0.85rem"
+			>
+				<Icon icon="ph:brackets-curly-bold" height="none" />
+			</button>
 		</div>
 
 		<h2>{$lang('on_color')}</h2>

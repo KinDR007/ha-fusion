@@ -442,5 +442,7 @@
 	"wet": "Mokro",
 	"energy": "Energie",
 	"energy_total": "Celkov\u00e1 spot\u0159eba",
+	"energy_sensor": "Senzor energie (kWh)",
+	"meter_mode": "re\u017eim m\u011b\u0159i\u010de",
 	"power": "V\u00fdkon"
 }

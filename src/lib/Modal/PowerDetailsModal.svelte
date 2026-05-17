@@ -16,13 +16,14 @@
     • Collapsible raw attributes
 -->
 <script lang="ts">
-	import { states, connection, lang, selectedLanguage } from '$lib/Stores';
+	import { states, connection, lang, selectedLanguage, templates } from '$lib/Stores';
 	import { callService } from 'home-assistant-js-websocket';
 	import Modal from '$lib/Modal/Index.svelte';
 	import ConfigButtons from '$lib/Modal/ConfigButtons.svelte';
 	import Toggle from '$lib/Components/Toggle.svelte';
 	import Icon from '@iconify/svelte';
 	import { getName, getDomain, relativeTime } from '$lib/Utils';
+	import { derivePowerCompanions } from '$lib/Constants/Power';
 	import { scaleTime, scaleLinear } from 'd3-scale';
 	import { line, area, curveMonotoneX } from 'd3-shape';
 	import { extent, bisector } from 'd3-array';
@@ -38,33 +39,33 @@
 	$: deviceClass = attributes?.device_class;
 
 	/**
-	 * Derive companion sensors via the same `sensor.<base>_<suffix>` rule
-	 * the power_button rendering uses. User overrides win when present
-	 * on the sel object.
+	 * Companion resolution is shared with the power_button tile so the
+	 * modal and the tile always agree on which sensors to read. The
+	 * helper detects meter-mode (entity_id is a sensor) and lets the
+	 * user override either source via `sel.power_sensor` / `sel.energy_sensor`.
 	 */
-	$: base = sel?.entity_id?.includes('.') ? sel.entity_id.split('.')[1] : sel?.entity_id;
-	$: powerSensorId = sel?.power_sensor || (base ? `sensor.${base}_power` : '');
-	$: energySensorId = sel?.energy_sensor || (base ? findEnergySensor(base, $states) : '');
+	/**
+	 * Honor templated power/energy-sensor overrides from `sel.template`.
+	 * The Button.svelte tile keeps its render_template subscription alive
+	 * for the lifetime of the tile, so `$templates[sel.id].<key>.output`
+	 * stays fresh while the modal is open — we just read from that store.
+	 */
+	$: tplBag = $templates?.[sel?.id];
+	$: powerSensorTemplated =
+		(sel?.template?.power_sensor && tplBag?.power_sensor?.output) || undefined;
+	$: energySensorTemplated =
+		(sel?.template?.energy_sensor && tplBag?.energy_sensor?.output) || undefined;
+
+	$: powerCompanions = derivePowerCompanions(sel?.entity_id, $states, {
+		power_sensor: powerSensorTemplated || sel?.power_sensor,
+		energy_sensor: energySensorTemplated || sel?.energy_sensor
+	});
+	$: powerSensorId = powerCompanions.powerSensor;
+	$: energySensorId = powerCompanions.energySensor;
+	$: meterMode = powerCompanions.meterMode;
 
 	$: powerEntity = powerSensorId ? $states?.[powerSensorId] : undefined;
 	$: energyEntity = energySensorId ? $states?.[energySensorId] : undefined;
-
-	/**
-	 * Probe a few common naming conventions for the kWh sensor.
-	 * Returns the first one that resolves in $states.
-	 */
-	function findEnergySensor(b: string, st: Record<string, any> | undefined): string {
-		if (!st) return '';
-		const candidates = [
-			`sensor.${b}_energy`,
-			`sensor.${b}_today_energy`,
-			`sensor.${b}_energy_today`,
-			`sensor.${b}_total_energy`,
-			`sensor.${b}_consumption`,
-			`sensor.${b}_kwh`
-		];
-		return candidates.find((c) => st[c]) || '';
-	}
 
 	$: currentWatts = (() => {
 		const v = powerEntity?.state;
@@ -278,11 +279,25 @@
 		.domain(extent(allPoints, (d: any) => d.x) as any)
 		.range([4, Math.max(4, chartWidth - 4)]);
 
+	/**
+	 * Y-scale per series. We expand the data extent by ~5 % so the
+	 * peak and the trough don't kiss the chart edges (which made the
+	 * curve look clipped in the previous build). `.nice()` is dropped
+	 * because the inflated domain already gives breathing room and
+	 * rounding it would push the visible peak further from the top.
+	 */
 	function yScaleFor(s: Series) {
+		const ext = extent(s.data, (d) => d.y) as [number, number] | [undefined, undefined];
+		let lo = ext[0] ?? 0;
+		let hi = ext[1] ?? 1;
+		if (lo === hi) {
+			lo = lo - 1;
+			hi = hi + 1;
+		}
+		const pad = (hi - lo) * 0.08;
 		return scaleLinear()
-			.domain(extent(s.data, (d) => d.y) as any)
-			.range([chartHeight - 4, 4])
-			.nice();
+			.domain([lo - pad, hi + pad])
+			.range([chartHeight - 6, 6]);
 	}
 	function pathFor(s: Series, kind: 'line' | 'area'): string {
 		const y = yScaleFor(s);
@@ -297,7 +312,7 @@
 		return (
 			area<{ x: Date; y: number }>()
 				.x((d) => xScale(d.x))
-				.y0(chartHeight - 4)
+				.y0(chartHeight - 6)
 				.y1((d) => y(d.y))
 				.curve(curveMonotoneX)(s.data) || ''
 		);
@@ -352,15 +367,23 @@
 						{/if}
 					</div>
 					<div class="hero-sub">
-						{stateOn ? $lang('on') : $lang('off')}
+						{#if !meterMode}
+							{stateOn ? $lang('on') : $lang('off')}
+						{:else if currentWatts !== undefined && currentWatts > 1}
+							{$lang('on')}
+						{:else}
+							{$lang('off')}
+						{/if}
 						{#if powerEntity?.last_changed}
 							· {relativeTime(powerEntity.last_changed, $selectedLanguage)}
 						{/if}
 					</div>
 				</div>
-				<div class="hero-toggle">
-					<Toggle checked={stateOn} on:change={toggle} />
-				</div>
+				{#if !meterMode}
+					<div class="hero-toggle">
+						<Toggle checked={stateOn} on:change={toggle} />
+					</div>
+				{/if}
 			</div>
 
 			{#if energyEntity}
@@ -478,7 +501,10 @@
 			</div>
 		{/if}
 
-		{#if deviceInfo.length > 0}
+		<!-- In meter mode the "device" is just the sensor itself, and
+		     its last_changed is already shown in the hero — skip the
+		     section to avoid the duplicate. -->
+		{#if !meterMode && deviceInfo.length > 0}
 			<h2>{$lang('device_info') || 'Device'}</h2>
 			<div class="grid">
 				{#each deviceInfo as info}
@@ -631,7 +657,7 @@
 	.chart {
 		position: relative;
 		width: 100%;
-		height: 10rem;
+		height: 16rem;
 		background: rgba(255, 255, 255, 0.03);
 		border-radius: 0.6rem;
 		padding: 0.4rem;
