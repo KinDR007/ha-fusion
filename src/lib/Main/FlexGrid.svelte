@@ -34,12 +34,22 @@
 -->
 <script lang="ts">
 	import ComputeIcon from '$lib/Components/ComputeIcon.svelte';
-	import { connection, editMode, itemHeight, ripple, states, lang } from '$lib/Stores';
+	import {
+		config,
+		connection,
+		editMode,
+		itemHeight,
+		ripple,
+		states,
+		templates,
+		lang
+	} from '$lib/Stores';
 	import { getName, getDomain, getTogglableService } from '$lib/Utils';
 	import { openEntityModal } from '$lib/Main/openEntityModal';
 	import Icon, { loadIcon } from '@iconify/svelte';
 	import { callService } from 'home-assistant-js-websocket';
 	import { openModal } from 'svelte-modals';
+	import { onDestroy } from 'svelte';
 	import Ripple from 'svelte-ripple';
 
 	export const demo: string | undefined = undefined;
@@ -47,11 +57,93 @@
 	export let sectionName: string | undefined = undefined;
 
 	$: cells = (sel?.cells || []) as Array<{
+		id?: string;
 		entity_id?: string;
 		label?: string;
+		state?: string;
 		icon?: string;
+		color?: string;
 		more_info?: boolean;
+		template?: Record<string, string>;
 	}>;
+
+	/**
+	 * Stable per-cell key used as the slot in the global `$templates` store.
+	 * Prefers `cell.id` (minted by FlexGridConfig when a template is created
+	 * on the cell), falls back to an index-based composite for cells that
+	 * have never been edited. Both are unique within a dashboard.
+	 */
+	function cellTemplateId(index: number): string {
+		const cell = cells[index];
+		return cell?.id || `${sel?.id ?? 'flex'}_cell_${index}`;
+	}
+
+	/**
+	 * Per-cell, per-template-field render_template subscriptions to HA.
+	 * Same race-condition fix as Button.svelte: each (cellId, fieldKey) pair
+	 * has its own slot in the map, replaced cleanly on every re-render so
+	 * stale subscriptions can't overwrite fresh outputs.
+	 */
+	let unsubscribers: Map<string, () => void> = new Map();
+
+	async function renderCellTemplate(
+		cellId: string,
+		key: string,
+		value: string,
+		entity_id: string
+	) {
+		if (!$connection) return;
+		const mapKey = `${cellId}__${key}`;
+		unsubscribers.get(mapKey)?.();
+		unsubscribers.delete(mapKey);
+		try {
+			const unsub = await $connection.subscribeMessage(
+				(response: { result: string } | { error: string; level: 'ERROR' | 'WARNING' }) => {
+					let data: any = { input: value, entity_id };
+					if ('result' in response) {
+						data.output = String(response.result);
+					} else if (response?.level === 'ERROR') {
+						console.error(response.error);
+						data.error = response.error;
+					}
+					$templates[cellId] = { ...$templates[cellId], [key]: data };
+				},
+				{
+					type: 'render_template',
+					template: value,
+					report_errors: true,
+					variables: { entity_id }
+				}
+			);
+			unsubscribers.set(mapKey, unsub);
+		} catch (e) {
+			console.error('flex_grid cell template error:', e);
+		}
+	}
+
+	/**
+	 * Drive the renderTemplate subscriptions whenever cell config changes.
+	 * Only triggers when HA is RUNNING (avoid sending requests during boot).
+	 */
+	$: if ($config?.state === 'RUNNING' && Array.isArray(cells)) {
+		cells.forEach((cell, i) => {
+			if (!cell?.entity_id || !cell?.template) return;
+			const cellId = cellTemplateId(i);
+			Object.entries(cell.template).forEach(([key, value]) => {
+				if (typeof value !== 'string' || !value) return;
+				const stored = $templates?.[cellId]?.[key];
+				const sameTemplate = value === stored?.input;
+				const sameEntity = cell.entity_id === stored?.entity_id;
+				if (sameTemplate && sameEntity) return;
+				renderCellTemplate(cellId, key, value, cell.entity_id);
+			});
+		});
+	}
+
+	onDestroy(() => {
+		unsubscribers.forEach((u) => u?.());
+		unsubscribers.clear();
+	});
 	$: title = sel?.name;
 	$: headerIcon = sel?.icon;
 
@@ -173,6 +265,9 @@
 					cellEntity?.state === 'open' ||
 					cellEntity?.state === 'unlocked'}
 				{@const clickable = isClickable(cell.entity_id)}
+				{@const tmpl = $templates?.[cellTemplateId(i)]}
+				{@const renderedColor = cell.template?.color ? tmpl?.color?.output : ''}
+				{@const renderedState = cell.template?.state ? tmpl?.state?.output : ''}
 				<div
 					class="cell"
 					class:clickable
@@ -180,6 +275,7 @@
 					data-state={cellOn}
 					tabindex={clickable ? 0 : -1}
 					role={clickable ? 'button' : undefined}
+					style:--cell-color={renderedColor || cell.color || ''}
 					on:click|stopPropagation={() => {
 						if ($editMode) handleContainerClick();
 						else if (clickable) handleCellClick(cell);
@@ -193,7 +289,10 @@
 						color: $editMode || !clickable ? 'rgba(0,0,0,0)' : 'rgba(255,255,255,0.18)'
 					}}
 				>
-					<span class="cell-icon">
+					{#if $editMode}
+						<span class="cell-index">{i + 1}</span>
+					{/if}
+					<span class="cell-icon" data-state={cellOn}>
 						{#if cell.icon}
 							{#await loadIcon(cell.icon)}
 								<Icon icon="ooui:help-ltr" height="none" width="100%" />
@@ -208,12 +307,17 @@
 					</span>
 					<div class="cell-text">
 						<div class="cell-label">{labelFor(cell)}</div>
-						<div class="cell-value">{valueFor(cell.entity_id)}</div>
+						<div class="cell-value">
+							{renderedState || cell.state || valueFor(cell.entity_id)}
+						</div>
 					</div>
 				</div>
 			{:else}
 				<div class="cell empty" class:editing={$editMode}>
-					{#if $editMode}<span class="cell-placeholder">+</span>{/if}
+					{#if $editMode}
+						<span class="cell-index">{i + 1}</span>
+						<span class="cell-placeholder">+</span>
+					{/if}
 				</div>
 			{/if}
 		{/each}
@@ -321,13 +425,42 @@
 		font-size: 1.2rem;
 	}
 
+	/* Icon circle — mirrors Button.svelte styling. Custom on-state color
+	   from `cell.color` (passed as --cell-color CSS var) wins over default. */
 	.cell-icon {
-		width: 1.15rem;
-		height: 1.15rem;
+		--icon-size: 1.6rem;
+		width: var(--icon-size);
+		height: var(--icon-size);
 		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		flex-shrink: 0;
-		opacity: 0.85;
-		color: rgb(180, 220, 255);
+		padding: 0.35rem;
+		border-radius: 50%;
+		background: rgba(0, 0, 0, 0.25);
+		color: rgb(200, 200, 200);
+		transition:
+			background-color 150ms ease,
+			color 150ms ease;
+	}
+
+	.cell-icon[data-state='true'] {
+		background: var(--cell-color, rgb(75, 166, 237));
+		color: white;
+	}
+
+	/* Index badge in edit mode — tiny number in top-right of each cell to
+	   correspond with the matching tab in the editor. */
+	.cell-index {
+		position: absolute;
+		top: 2px;
+		right: 4px;
+		font-size: 0.6rem;
+		font-weight: 700;
+		opacity: 0.55;
+		color: var(--theme-button-state-color-off);
+		pointer-events: none;
+		z-index: 1;
 	}
 
 	.cell-text {

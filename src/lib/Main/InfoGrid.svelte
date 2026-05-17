@@ -27,8 +27,17 @@
         # … up to 6
 -->
 <script lang="ts">
-	import { editMode, itemHeight, states, lang } from '$lib/Stores';
+	import {
+		config,
+		connection,
+		editMode,
+		itemHeight,
+		states,
+		templates,
+		lang
+	} from '$lib/Stores';
 	import { getName } from '$lib/Utils';
+	import { onDestroy } from 'svelte';
 	import Icon, { loadIcon } from '@iconify/svelte';
 	import { openModal } from 'svelte-modals';
 
@@ -36,9 +45,94 @@
 	export let sel: any;
 	export let sectionName: string | undefined = undefined;
 
-	$: cells = (sel?.cells || []) as Array<{ entity_id?: string; label?: string }>;
+	$: cells = (sel?.cells || []) as Array<{
+		id?: string;
+		entity_id?: string;
+		label?: string;
+		state?: string;
+		color?: string;
+		template?: Record<string, string>;
+	}>;
 	$: title = sel?.name;
 	$: icon = sel?.icon;
+
+	/** Per-cell stable id for $templates store keying (mirrors FlexGrid). */
+	function cellTemplateId(index: number): string {
+		const cell = cells[index];
+		return cell?.id || `${sel?.id ?? 'infogrid'}_cell_${index}`;
+	}
+
+	/**
+	 * Per-cell per-template-field HA render_template subscriptions.
+	 * Same per-key Map cleanup as Button/FlexGrid to avoid stale-output races.
+	 */
+	let unsubscribers: Map<string, () => void> = new Map();
+
+	async function renderCellTemplate(
+		cellId: string,
+		key: string,
+		value: string,
+		entity_id: string
+	) {
+		if (!$connection) return;
+		const mapKey = `${cellId}__${key}`;
+		unsubscribers.get(mapKey)?.();
+		unsubscribers.delete(mapKey);
+		try {
+			const unsub = await $connection.subscribeMessage(
+				(response: { result: string } | { error: string; level: 'ERROR' | 'WARNING' }) => {
+					let data: any = { input: value, entity_id };
+					if ('result' in response) {
+						data.output = String(response.result);
+					} else if (response?.level === 'ERROR') {
+						console.error(response.error);
+						data.error = response.error;
+					}
+					$templates[cellId] = { ...$templates[cellId], [key]: data };
+				},
+				{
+					type: 'render_template',
+					template: value,
+					report_errors: true,
+					variables: { entity_id }
+				}
+			);
+			unsubscribers.set(mapKey, unsub);
+		} catch (e) {
+			console.error('info_grid cell template error:', e);
+		}
+	}
+
+	$: if ($config?.state === 'RUNNING' && Array.isArray(cells)) {
+		cells.forEach((cell, i) => {
+			if (!cell?.entity_id || !cell?.template) return;
+			const cellId = cellTemplateId(i);
+			Object.entries(cell.template).forEach(([key, value]) => {
+				if (typeof value !== 'string' || !value) return;
+				const stored = $templates?.[cellId]?.[key];
+				if (value === stored?.input && cell.entity_id === stored?.entity_id) return;
+				renderCellTemplate(cellId, key, value, cell.entity_id);
+			});
+		});
+	}
+
+	onDestroy(() => {
+		unsubscribers.forEach((u) => u?.());
+		unsubscribers.clear();
+	});
+
+	/**
+	 * Dynamic dimensions — mirror flex_grid's API.
+	 *   span_cols × span_rows  → footprint on the parent dashboard grid
+	 *   inner_cols × inner_rows → internal layout of value pairs
+	 *
+	 * Defaults preserve the previous fixed 1×2 footprint with 2×3 pairs so
+	 * existing dashboards don't change.
+	 */
+	$: spanRows = Math.max(1, Math.min(Number(sel?.span_rows) || 2, 6));
+	$: innerCols = Math.max(1, Math.min(Number(sel?.inner_cols) || 2, 6));
+	$: innerRows = Math.max(1, Math.min(Number(sel?.inner_rows) || 3, 8));
+	$: totalSlots = innerCols * innerRows;
 
 	function fmt(value: any, unit: string): string {
 		if (value === undefined || value === null || value === '' || value === 'unavailable')
@@ -79,7 +173,9 @@
 	class="container"
 	tabindex="-1"
 	style={$editMode ? 'cursor: pointer;' : ''}
-	style:min-height="{$itemHeight * 2 + 8}px"
+	style:min-height="{$itemHeight * spanRows}px"
+	style:--inner-cols={innerCols}
+	style:--inner-rows={innerRows}
 	on:pointerenter={handlePointer}
 	on:pointerdown={handlePointer}
 	on:click|stopPropagation={handleContainerClick}
@@ -102,23 +198,31 @@
 		<span class="header-text">{title || ''}</span>
 	</div>
 
-	<!-- 3 rows × 2 columns of info pairs -->
+	<!-- innerCols × innerRows grid of info pairs -->
 	<div class="rows">
-		{#each [0, 2, 4] as start}
-			<div class="row">
-				{#each [start, start + 1] as i}
-					{#if cells[i]?.entity_id}
-						<div class="pair">
-							<span class="pair-label">{labelFor(cells[i])}:</span>
-							<span class="pair-value">{valueFor(cells[i].entity_id)}</span>
-						</div>
-					{:else}
-						<div class="pair empty">
-							{#if $editMode}<span class="pair-placeholder">—</span>{/if}
-						</div>
+		{#each Array(totalSlots) as _, i}
+			{@const cell = cells[i]}
+			{#if cell?.entity_id}
+				{@const tmpl = $templates?.[cellTemplateId(i)]}
+				{@const renderedState = cell.template?.state ? tmpl?.state?.output : ''}
+				{@const renderedLabel = cell.template?.label ? tmpl?.label?.output : ''}
+				{@const renderedColor = cell.template?.color ? tmpl?.color?.output : ''}
+				{@const cellColor = renderedColor || cell.color || ''}
+				<div class="pair">
+					{#if $editMode}<span class="pair-index">{i + 1}</span>{/if}
+					<span class="pair-label">{renderedLabel || labelFor(cell)}:</span>
+					<span class="pair-value" style:color={cellColor || undefined}>
+						{renderedState || cell.state || valueFor(cell.entity_id)}
+					</span>
+				</div>
+			{:else}
+				<div class="pair empty">
+					{#if $editMode}
+						<span class="pair-index">{i + 1}</span>
+						<span class="pair-placeholder">—</span>
 					{/if}
-				{/each}
-			</div>
+				</div>
+			{/if}
 		{/each}
 	</div>
 </div>
@@ -167,17 +271,12 @@
 
 	.rows {
 		flex: 1;
-		display: flex;
-		flex-direction: column;
-		justify-content: space-around;
-		gap: 0.15rem;
-	}
-
-	.row {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 0.4rem;
+		grid-template-columns: repeat(var(--inner-cols), 1fr);
+		grid-auto-rows: 1fr;
+		gap: 0.3rem 0.5rem;
 		align-items: center;
+		min-height: 0;
 	}
 
 	.pair {
@@ -189,6 +288,19 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		position: relative;
+	}
+
+	.pair-index {
+		position: absolute;
+		top: 0;
+		right: 0;
+		font-size: 0.6rem;
+		font-weight: 700;
+		opacity: 0.55;
+		color: var(--theme-button-state-color-off);
+		pointer-events: none;
+		z-index: 1;
 	}
 
 	.pair-label {

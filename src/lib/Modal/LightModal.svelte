@@ -62,13 +62,27 @@
 		: [attributes?.supported_color_modes].filter(Boolean);
 
 	$: colorMode = attributes?.color_mode;
+
+	/**
+	 * Default tab selection. Priority:
+	 *   1. last value user clicked (sticky)
+	 *   2. current colorMode if it's color_temp/white
+	 *   3. 'color' if the light supports any RGB-ish mode
+	 *   4. 'color_temp' if the light supports it (chroma-only lights)
+	 *   5. raw colorMode as a last resort
+	 *
+	 * Step 4 prevents the RGB picker from being shown on a chroma-only light
+	 * whose current colorMode is still 'unknown' (e.g. right after turn-on).
+	 */
 	$: selTab = selTabClicked
 		? selTab
 		: colorMode === 'color_temp' || colorMode === 'white'
 			? colorMode
 			: supports?.COLOR
 				? 'color'
-				: colorMode;
+				: colorModes?.includes('color_temp')
+					? 'color_temp'
+					: colorMode;
 
 	$: toggle = entity?.state === 'on';
 	$: current = Math.round(rangeValue / 2.55);
@@ -239,12 +253,20 @@
 		{/if}
 
 		{#if supports?.BRIGHTNESS && selTab !== 'white'}
+			<!--
+				Gate the RGB color wheel on `supports.COLOR` so a chroma-only
+				light (color_temp without HS/XY/RGB*) never shows it. The temp
+				wheel is shown when the user is on the color_temp tab OR when
+				the light supports color_temp and doesn't have any RGB mode at
+				all (in which case there's no other thing to show).
+			-->
 			<ColorPicker
 				{entity}
 				{colorMode}
 				supportedColorModes={colorModes}
-				tempSelected={selTab === 'color_temp'}
-				colorSelected={selTab !== 'color_temp'}
+				tempSelected={selTab === 'color_temp' ||
+					(!supports?.COLOR && colorModes?.includes('color_temp'))}
+				colorSelected={selTab !== 'color_temp' && supports?.COLOR}
 			/>
 		{/if}
 

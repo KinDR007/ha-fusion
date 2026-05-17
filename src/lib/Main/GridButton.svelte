@@ -27,12 +27,23 @@
 -->
 <script lang="ts">
 	import ComputeIcon from '$lib/Components/ComputeIcon.svelte';
-	import { connection, editMode, itemHeight, ripple, states, lang, motion } from '$lib/Stores';
+	import {
+		config,
+		connection,
+		editMode,
+		itemHeight,
+		ripple,
+		states,
+		templates,
+		lang,
+		motion
+	} from '$lib/Stores';
 	import { getName, getTogglableService } from '$lib/Utils';
 	import { openEntityModal } from '$lib/Main/openEntityModal';
 	import Icon, { loadIcon } from '@iconify/svelte';
 	import { callService } from 'home-assistant-js-websocket';
 	import { openModal } from 'svelte-modals';
+	import { onDestroy } from 'svelte';
 	import Ripple from 'svelte-ripple';
 
 	export const demo: string | undefined = undefined; // unused, here for component-API parity with Button.svelte
@@ -40,10 +51,76 @@
 	export let sectionName: string | undefined = undefined;
 
 	$: cells = (sel?.cells || []) as Array<{
+		id?: string;
 		entity_id?: string;
 		label?: string;
+		state?: string;
 		icon?: string;
+		color?: string;
+		more_info?: boolean;
+		template?: Record<string, string>;
 	}>;
+
+	/** Stable per-cell id for $templates store keying. */
+	function cellTemplateId(index: number): string {
+		const cell = cells[index];
+		return cell?.id || `${sel?.id ?? 'grid'}_cell_${index}`;
+	}
+
+	let unsubscribers: Map<string, () => void> = new Map();
+
+	async function renderCellTemplate(
+		cellId: string,
+		key: string,
+		value: string,
+		entity_id: string
+	) {
+		if (!$connection) return;
+		const mapKey = `${cellId}__${key}`;
+		unsubscribers.get(mapKey)?.();
+		unsubscribers.delete(mapKey);
+		try {
+			const unsub = await $connection.subscribeMessage(
+				(response: { result: string } | { error: string; level: 'ERROR' | 'WARNING' }) => {
+					let data: any = { input: value, entity_id };
+					if ('result' in response) {
+						data.output = String(response.result);
+					} else if (response?.level === 'ERROR') {
+						console.error(response.error);
+						data.error = response.error;
+					}
+					$templates[cellId] = { ...$templates[cellId], [key]: data };
+				},
+				{
+					type: 'render_template',
+					template: value,
+					report_errors: true,
+					variables: { entity_id }
+				}
+			);
+			unsubscribers.set(mapKey, unsub);
+		} catch (e) {
+			console.error('grid_button cell template error:', e);
+		}
+	}
+
+	$: if ($config?.state === 'RUNNING' && Array.isArray(cells)) {
+		cells.forEach((cell, i) => {
+			if (!cell?.entity_id || !cell?.template) return;
+			const cellId = cellTemplateId(i);
+			Object.entries(cell.template).forEach(([key, value]) => {
+				if (typeof value !== 'string' || !value) return;
+				const stored = $templates?.[cellId]?.[key];
+				if (value === stored?.input && cell.entity_id === stored?.entity_id) return;
+				renderCellTemplate(cellId, key, value, cell.entity_id);
+			});
+		});
+	}
+
+	onDestroy(() => {
+		unsubscribers.forEach((u) => u?.());
+		unsubscribers.clear();
+	});
 
 	$: title = sel?.name;
 	$: icon = sel?.icon;
@@ -143,12 +220,20 @@
 		{#each Array(6) as _, i}
 			{#if cells[i] && cells[i].entity_id}
 				{@const cellEntity = $states?.[cells[i].entity_id]}
-				{@const cellOn = cellEntity?.state === 'on' || cellEntity?.state === 'open' || cellEntity?.state === 'unlocked'}
+				{@const cellOn =
+					cellEntity?.state === 'on' ||
+					cellEntity?.state === 'open' ||
+					cellEntity?.state === 'unlocked'}
+				{@const tmpl = $templates?.[cellTemplateId(i)]}
+				{@const renderedColor = cells[i].template?.color ? tmpl?.color?.output : ''}
+				{@const renderedState = cells[i].template?.state ? tmpl?.state?.output : ''}
+				{@const renderedLabel = cells[i].template?.label ? tmpl?.label?.output : ''}
 				<div
 					class="cell clickable"
 					data-state={cellOn}
 					tabindex="0"
 					role="button"
+					style:--cell-color={renderedColor || cells[i].color || ''}
 					on:click|stopPropagation={() => {
 						if (!$editMode) handleCellClick(cells[i]);
 						else handleContainerClick();
@@ -161,7 +246,8 @@
 						color: $editMode ? 'rgba(0,0,0,0)' : 'rgba(255,255,255,0.18)'
 					}}
 				>
-					<span class="cell-icon">
+					{#if $editMode}<span class="cell-index">{i + 1}</span>{/if}
+					<span class="cell-icon" data-state={cellOn}>
 						{#if cells[i].icon}
 							{#await loadIcon(cells[i].icon)}
 								<Icon icon="ooui:help-ltr" height="none" width="100%" />
@@ -175,8 +261,10 @@
 						{/if}
 					</span>
 					<div class="cell-text">
-						<div class="cell-label">{labelFor(cells[i])}</div>
-						<div class="cell-value">{valueFor(cells[i].entity_id)}</div>
+						<div class="cell-label">{renderedLabel || labelFor(cells[i])}</div>
+						<div class="cell-value">
+							{renderedState || cells[i].state || valueFor(cells[i].entity_id)}
+						</div>
 					</div>
 				</div>
 			{:else}
@@ -286,6 +374,23 @@
 		align-items: center;
 		color: rgba(255, 255, 255, 0.35);
 		font-size: 1.2rem;
+	}
+
+	.cell-index {
+		position: absolute;
+		top: 2px;
+		right: 4px;
+		font-size: 0.6rem;
+		font-weight: 700;
+		opacity: 0.55;
+		color: var(--theme-button-state-color-off);
+		pointer-events: none;
+		z-index: 1;
+	}
+
+	.cell-icon[data-state='true'] {
+		background: var(--cell-color, rgb(75, 166, 237)) !important;
+		color: white;
 	}
 
 	.cell-icon {

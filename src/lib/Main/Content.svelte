@@ -20,10 +20,11 @@
 	//   large = 2 cols × 4 rows  (camera/media widgets)
 	//   tall  = 1 col  × 2 rows  (grid_button)
 	const large = ['conditional_media', 'picture_elements', 'camera'];
-	const tall = ['grid_button', 'info_grid'];
+	const tall = ['grid_button'];
+	const dynamic = ['flex_grid', 'info_grid'];
 </script>
 
-{#if item?.[SHADOW_ITEM_MARKER_PROPERTY_NAME] && (large.includes(item?.type) || tall.includes(item?.type) || item?.type === 'flex_grid')}
+{#if item?.[SHADOW_ITEM_MARKER_PROPERTY_NAME] && (large.includes(item?.type) || tall.includes(item?.type) || dynamic.includes(item?.type))}
 	<div class="shadow"></div>
 {/if}
 

@@ -185,7 +185,9 @@
 		// 2 columns × 4 rows for media/camera widgets
 		const large = ['conditional_media', 'picture_elements', 'camera'];
 		// 1 column × 2 rows — same width as a regular button but twice as tall
-		const tall = ['grid_button', 'info_grid'];
+		const tall = ['grid_button'];
+		// dynamic-footprint tiles: span_cols/span_rows come from the item
+		const dynamic = ['flex_grid', 'info_grid'];
 
 		let spanCols = 1;
 		let spanRows = 1;
@@ -194,8 +196,9 @@
 			spanRows = 4;
 		} else if (tall.includes(type)) {
 			spanRows = 2;
-		} else if (type === 'flex_grid') {
-			// Dynamic footprint read from the item itself, clamped to safe range.
+		} else if (dynamic.includes(type)) {
+			// Read from item, clamped. Default keeps the legacy 1×2 footprint
+			// so existing dashboards keep their layout after upgrade.
 			spanCols = Math.max(1, Math.min(Number(item?.span_cols) || 1, 4));
 			spanRows = Math.max(1, Math.min(Number(item?.span_rows) || 2, 6));
 		}
