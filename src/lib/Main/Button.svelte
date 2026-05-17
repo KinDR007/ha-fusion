@@ -243,6 +243,10 @@
 			}
 		} else if (more_info === false) {
 			toggle();
+		} else if (sel?.type === 'power_button') {
+			// power_button: dedicated power-details modal regardless of
+			// underlying switch domain (current W + cumulative kWh + 24h)
+			openModal(() => import('$lib/Modal/PowerDetailsModal.svelte'), { sel });
 		} else {
 			switch (getDomain(sel?.entity_id)) {
 				// light

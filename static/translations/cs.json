@@ -439,5 +439,8 @@
 	"signal": "Sign\u00e1l",
 	"temperature": "Teplota",
 	"voltage": "Nap\u011bt\u00ed",
-	"wet": "Mokro"
+	"wet": "Mokro",
+	"energy": "Energie",
+	"energy_total": "Celkov\u00e1 spot\u0159eba",
+	"power": "V\u00fdkon"
 }

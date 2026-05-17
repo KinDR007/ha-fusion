@@ -434,5 +434,8 @@
 	"signal": "Signal",
 	"temperature": "Temperature",
 	"voltage": "Voltage",
-	"wet": "Wet"
+	"wet": "Wet",
+	"energy": "Energy",
+	"energy_total": "Total energy",
+	"power": "Power"
 }
