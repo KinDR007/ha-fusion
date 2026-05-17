@@ -208,7 +208,10 @@
 				{@const renderedLabel = cell.template?.label ? tmpl?.label?.output : ''}
 				{@const renderedColor = cell.template?.color ? tmpl?.color?.output : ''}
 				{@const cellColor = renderedColor || cell.color || ''}
-				<div class="pair">
+				<div
+					class="pair"
+					style:--ig-font-scale={cell.font_scale || sel?.font_scale || ''}
+				>
 					{#if $editMode}<span class="pair-index">{i + 1}</span>{/if}
 					<span class="pair-label">{renderedLabel || labelFor(cell)}:</span>
 					<span class="pair-value" style:color={cellColor || undefined}>
@@ -284,7 +287,7 @@
 		align-items: baseline;
 		gap: 0.3rem;
 		min-width: 0;
-		font-size: 0.85rem;
+		font-size: calc(0.85rem * var(--ig-font-scale, 1));
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
