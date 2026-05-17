@@ -36,14 +36,17 @@ export async function openEntityModal(sel: { id?: any; entity_id?: string }, ext
 		case 'calendar':
 			return open(() => import('$lib/Modal/CalendarModal.svelte'), { sel, ...extras });
 
+		case 'sensor':
+		case 'binary_sensor':
+			// rich read-only details modal: grouped attributes + 24h graph
+			return open(() => import('$lib/Modal/SensorDetailsModal.svelte'), { sel, ...extras });
+
 		case 'air_quality':
 		case 'date':
 		case 'time':
 		case 'event':
 		case 'image_processing':
 		case 'mailbox':
-		case 'sensor':
-		case 'binary_sensor':
 		case 'stt':
 		case 'weather':
 		case 'button':

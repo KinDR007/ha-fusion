@@ -33,20 +33,70 @@ export function deriveHumiditySibling(
 	tempEntityId: string,
 	states: Record<string, any> | undefined
 ): string | undefined {
-	if (!tempEntityId || !states) return undefined;
+	return deriveSibling(tempEntityId, states, [
+		[/_temperature$/, '_humidity'],
+		[/_temp$/, '_humidity'],
+		[/_temp$/, '_humi']
+	]);
+}
 
-	// suffix swap
-	const guesses = [
-		tempEntityId.replace(/_temperature$/, '_humidity'),
-		tempEntityId.replace(/_temp$/, '_humidity'),
-		tempEntityId.replace(/_temp$/, '_humi')
-	];
-	for (const candidate of guesses) {
-		if (candidate !== tempEntityId && states[candidate]) {
-			return candidate;
-		}
+/**
+ * Generic suffix-swap sibling finder. The picker is small and shallow on
+ * purpose — same entity-naming convention as deriveHumiditySibling. Used
+ * by SensorDetailsModal to discover "related readings" (pressure,
+ * dewpoint, …) on the same physical sensor.
+ */
+export function deriveSibling(
+	baseEntityId: string,
+	states: Record<string, any> | undefined,
+	swaps: Array<[RegExp, string]>
+): string | undefined {
+	if (!baseEntityId || !states) return undefined;
+	for (const [pattern, replacement] of swaps) {
+		const candidate = baseEntityId.replace(pattern, replacement);
+		if (candidate !== baseEntityId && states[candidate]) return candidate;
 	}
 	return undefined;
+}
+
+/**
+ * For a given sensor, return any siblings on the same device that report
+ * related quantities (humidity, temperature, pressure, …). Used by the
+ * details modal to show grouped "main values" instead of forcing the user
+ * to open three tiles.
+ */
+export function findRelatedSiblings(
+	entityId: string,
+	states: Record<string, any> | undefined
+): Array<{ kind: string; entity_id: string }> {
+	if (!entityId || !states) return [];
+
+	const base = entityId.replace(
+		/_(temperature|temp|humidity|humi|pressure|dewpoint|illuminance|lux)$/,
+		''
+	);
+	if (base === entityId) return [];
+
+	const candidates: Array<[string, string[]]> = [
+		['temperature', ['_temperature', '_temp']],
+		['humidity', ['_humidity', '_humi']],
+		['pressure', ['_pressure']],
+		['dewpoint', ['_dewpoint', '_dew_point']],
+		['illuminance', ['_illuminance', '_lux']],
+		['battery', ['_battery']]
+	];
+
+	const out: Array<{ kind: string; entity_id: string }> = [];
+	for (const [kind, suffixes] of candidates) {
+		for (const suf of suffixes) {
+			const candidate = base + suf;
+			if (candidate !== entityId && states[candidate]) {
+				out.push({ kind, entity_id: candidate });
+				break;
+			}
+		}
+	}
+	return out;
 }
 
 /**
