@@ -3,6 +3,9 @@
 	import Button from '$lib/Main/Button.svelte';
 	import PowerButton from '$lib/Main/PowerButton.svelte';
 	import VictronButton from '$lib/Main/VictronButton.svelte';
+	import GridButton from '$lib/Main/GridButton.svelte';
+	import InfoGrid from '$lib/Main/InfoGrid.svelte';
+	import FlexGrid from '$lib/Main/FlexGrid.svelte';
 	import ConditionalMedia from '$lib/Main/ConditionalMedia.svelte';
 	import PictureElements from '$lib/Main/PictureElements.svelte';
 	import Camera from '$lib/Main/Camera.svelte';
@@ -12,10 +15,15 @@
 	export let item: any;
 	export let sectionName: string | undefined = undefined;
 
+	// Items that visually take more than one grid cell. The drag-drop shadow
+	// indicator needs to match the rendered tile size.
+	//   large = 2 cols × 4 rows  (camera/media widgets)
+	//   tall  = 1 col  × 2 rows  (grid_button)
 	const large = ['conditional_media', 'picture_elements', 'camera'];
+	const tall = ['grid_button', 'info_grid'];
 </script>
 
-{#if item?.[SHADOW_ITEM_MARKER_PROPERTY_NAME] && large.includes(item?.type)}
+{#if item?.[SHADOW_ITEM_MARKER_PROPERTY_NAME] && (large.includes(item?.type) || tall.includes(item?.type) || item?.type === 'flex_grid')}
 	<div class="shadow"></div>
 {/if}
 
@@ -27,6 +35,12 @@
 	<PowerButton sel={item} {sectionName} />
 {:else if item?.type === 'victron_button'}
 	<VictronButton sel={item} {sectionName} />
+{:else if item?.type === 'grid_button'}
+	<GridButton sel={item} {sectionName} />
+{:else if item?.type === 'info_grid'}
+	<InfoGrid sel={item} {sectionName} />
+{:else if item?.type === 'flex_grid'}
+	<FlexGrid sel={item} {sectionName} />
 {:else if item?.type === 'conditional_media'}
 	<ConditionalMedia sel={item} />
 {:else if item?.type === 'picture_elements'}

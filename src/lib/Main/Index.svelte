@@ -180,11 +180,29 @@
     `;
 	}
 
-	function itemStyles(type: string) {
+	function itemStyles(item: any) {
+		const type: string = item?.type || '';
+		// 2 columns × 4 rows for media/camera widgets
 		const large = ['conditional_media', 'picture_elements', 'camera'];
+		// 1 column × 2 rows — same width as a regular button but twice as tall
+		const tall = ['grid_button', 'info_grid'];
+
+		let spanCols = 1;
+		let spanRows = 1;
+		if (large.includes(type)) {
+			spanCols = 2;
+			spanRows = 4;
+		} else if (tall.includes(type)) {
+			spanRows = 2;
+		} else if (type === 'flex_grid') {
+			// Dynamic footprint read from the item itself, clamped to safe range.
+			spanCols = Math.max(1, Math.min(Number(item?.span_cols) || 1, 4));
+			spanRows = Math.max(1, Math.min(Number(item?.span_rows) || 2, 6));
+		}
+
 		return `
-			grid-column: ${large.includes(type) ? 'span 2' : 'span 1'};
-			grid-row: ${large.includes(type) ? 'span 4' : 'span 1'};
+			grid-column: span ${spanCols};
+			grid-row: span ${spanRows};
 			display: ${type ? '' : 'none'};
     `;
 	}
@@ -337,7 +355,7 @@
 										class="item"
 										animate:flip={{ duration: $motion }}
 										tabindex="-1"
-										style={itemStyles(item?.type)}
+										style={itemStyles(item)}
 									>
 										<Content {item} sectionName={stackSection?.name} />
 									</div>
@@ -403,7 +421,7 @@
 							class="item"
 							animate:flip={{ duration: $motion }}
 							tabindex="-1"
-							style={itemStyles(item?.type)}
+							style={itemStyles(item)}
 						>
 							<Content {item} sectionName={section?.name} />
 						</div>

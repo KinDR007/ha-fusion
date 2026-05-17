@@ -16,6 +16,9 @@
 	import Button from '$lib/Main/Button.svelte';
 	import PowerButton from '$lib/Main/PowerButton.svelte';
 	import VictronButton from '$lib/Main/VictronButton.svelte';
+	import GridButton from '$lib/Main/GridButton.svelte';
+	import InfoGrid from '$lib/Main/InfoGrid.svelte';
+	import FlexGrid from '$lib/Main/FlexGrid.svelte';
 	import Camera from '$lib/Main/Camera.svelte';
 	import ConditionalMedia from '$lib/Main/ConditionalMedia.svelte';
 	import Empty from '$lib/Main/Empty.svelte';
@@ -108,6 +111,30 @@
 			}
 		},
 		{
+			id: 'grid_button',
+			type: $lang('grid_button'),
+			component: GridButton,
+			props: {
+				sel
+			}
+		},
+		{
+			id: 'info_grid',
+			type: $lang('info_grid'),
+			component: InfoGrid,
+			props: {
+				sel
+			}
+		},
+		{
+			id: 'flex_grid',
+			type: $lang('flex_grid'),
+			component: FlexGrid,
+			props: {
+				sel
+			}
+		},
+		{
 			id: 'camera',
 			type: $lang('camera'),
 			component: Camera,
@@ -174,6 +201,15 @@
 					demo: $demo.sensor,
 					sel
 				});
+				break;
+			case 'grid_button':
+				openModal(() => import('$lib/Modal/GridButtonConfig.svelte'), { sel });
+				break;
+			case 'info_grid':
+				openModal(() => import('$lib/Modal/InfoGridConfig.svelte'), { sel });
+				break;
+			case 'flex_grid':
+				openModal(() => import('$lib/Modal/FlexGridConfig.svelte'), { sel });
 				break;
 			case 'camera':
 				openModal(() => import('$lib/Modal/CameraConfig.svelte'), {
@@ -265,7 +301,12 @@
 					<div
 						class="preview"
 						class:camera={id === 'camera'}
-						class:button={id === 'button' || id === 'power_button' || id === 'victron_button'}
+						class:button={id === 'button' ||
+							id === 'power_button' ||
+							id === 'victron_button' ||
+							id === 'grid_button' ||
+							id === 'info_grid' ||
+							id === 'flex_grid'}
 					>
 						<svelte:component this={component} {...props} />
 					</div>
