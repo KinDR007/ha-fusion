@@ -7,7 +7,7 @@
   intend (rare but possible with custom integrations).
 -->
 <script lang="ts">
-	import { dashboard, states, record, lang, ripple } from '$lib/Stores';
+	import { dashboard, states, templates, record, lang, ripple } from '$lib/Stores';
 	import { onDestroy } from 'svelte';
 	import TempHumiButton from '$lib/Main/TempHumiButton.svelte';
 	import Select from '$lib/Components/Select.svelte';
@@ -18,6 +18,7 @@
 	import ConfigButtons from '$lib/Modal/ConfigButtons.svelte';
 	import { updateObj, getName } from '$lib/Utils';
 	import { deriveHumiditySibling, listThPairs } from '$lib/Constants/TempHumi';
+	import { openModal } from 'svelte-modals';
 
 	export let isOpen: boolean;
 	export let sel: any;
@@ -39,6 +40,25 @@
 		}
 		sel = sel;
 		$dashboard = $dashboard;
+	}
+
+	/**
+	 * Open the standard Templater modal for a given field. The temp_humi_button
+	 * item itself is passed as `sel` — Templater writes to sel.template[key],
+	 * which is then picked up by TempHumiButton's render_template subscription
+	 * loop. Same pattern Button.svelte uses.
+	 */
+	function openTemplaterFor(key: 'state' | 'color' | 'name' | 'icon') {
+		if (!sel.template) sel.template = {};
+		openModal(() => import('$lib/Modal/Templater.svelte'), {
+			sel,
+			type: key
+		});
+		$dashboard = $dashboard;
+	}
+
+	function hasTemplate(key: 'state' | 'color' | 'name' | 'icon'): boolean {
+		return !!sel?.template?.[key];
 	}
 
 	onDestroy(() => $record());
@@ -150,14 +170,58 @@
 				<input
 					class="input"
 					type="text"
-					placeholder={$lang('name')}
+					placeholder={hasTemplate('name') ? '(template)' : $lang('name')}
 					autocomplete="off"
 					spellcheck="false"
 					bind:value={name}
 					on:change={(event) => set('name', event)}
 					style:padding
+					disabled={hasTemplate('name')}
+					class:disabled={hasTemplate('name')}
 				/>
 			</InputClear>
+			<button
+				use:Ripple={$ripple}
+				title={$lang('template')}
+				class="icon-gallery"
+				class:template-active={hasTemplate('name')}
+				on:click={() => openTemplaterFor('name')}
+				style:padding="0.85rem"
+			>
+				<Icon icon="ph:brackets-curly-bold" height="none" />
+			</button>
+		</div>
+
+		<h2>{$lang('state')}</h2>
+		<div class="icon-gallery-container">
+			<InputClear
+				condition={sel?.state}
+				on:clear={() => setField('state', undefined)}
+				let:padding
+			>
+				<input
+					class="input"
+					type="text"
+					placeholder={hasTemplate('state') ? '(template)' : '21.5 °C / 55 %'}
+					autocomplete="off"
+					spellcheck="false"
+					value={sel?.state || ''}
+					on:input={(e) => setField('state', e.currentTarget.value || undefined)}
+					style:padding
+					disabled={hasTemplate('state')}
+					class:disabled={hasTemplate('state')}
+				/>
+			</InputClear>
+			<button
+				use:Ripple={$ripple}
+				title={$lang('template')}
+				class="icon-gallery"
+				class:template-active={hasTemplate('state')}
+				on:click={() => openTemplaterFor('state')}
+				style:padding="0.85rem"
+			>
+				<Icon icon="ph:brackets-curly-bold" height="none" />
+			</button>
 		</div>
 
 		<h2>{$lang('icon')}</h2>
@@ -173,12 +237,14 @@
 				<input
 					class="input"
 					type="text"
-					placeholder="mdi:thermometer-water"
+					placeholder={hasTemplate('icon') ? '(template)' : 'mdi:thermometer-water'}
 					autocomplete="off"
 					spellcheck="false"
 					bind:value={icon}
 					on:change={(event) => set('icon', event)}
 					style:padding
+					disabled={hasTemplate('icon')}
+					class:disabled={hasTemplate('icon')}
 				/>
 			</InputClear>
 			<button
@@ -189,6 +255,56 @@
 				style:padding="0.84rem"
 			>
 				<Icon icon="majesticons:open-line" height="none" />
+			</button>
+			<button
+				use:Ripple={$ripple}
+				title={$lang('template')}
+				class="icon-gallery"
+				class:template-active={hasTemplate('icon')}
+				on:click={() => openTemplaterFor('icon')}
+				style:padding="0.85rem"
+			>
+				<Icon icon="ph:brackets-curly-bold" height="none" />
+			</button>
+		</div>
+
+		<h2>{$lang('color')}</h2>
+		<div class="icon-gallery-container">
+			<InputClear
+				condition={sel?.color}
+				on:clear={() => setField('color', undefined)}
+				let:padding
+			>
+				<input
+					class="input"
+					type="text"
+					placeholder={hasTemplate('color') ? '(template)' : $lang('color')}
+					autocomplete="off"
+					spellcheck="false"
+					value={sel?.color || ''}
+					on:input={(e) => setField('color', e.currentTarget.value || undefined)}
+					style:padding
+					disabled={hasTemplate('color')}
+					class:disabled={hasTemplate('color')}
+				/>
+			</InputClear>
+			<input
+				type="color"
+				value={sel?.color && sel.color.startsWith('#') ? sel.color : '#4ba6ed'}
+				disabled={hasTemplate('color')}
+				on:input={(e) => setField('color', e.currentTarget.value)}
+				on:change={(e) => setField('color', e.currentTarget.value)}
+				title={$lang('color')}
+			/>
+			<button
+				use:Ripple={$ripple}
+				title={$lang('template')}
+				class="icon-gallery"
+				class:template-active={hasTemplate('color')}
+				on:click={() => openTemplaterFor('color')}
+				style:padding="0.85rem"
+			>
+				<Icon icon="ph:brackets-curly-bold" height="none" />
 			</button>
 		</div>
 
