@@ -85,6 +85,13 @@
 	 * Friendly labels + icons for "device info" attributes. Order in
 	 * the array controls display order.
 	 */
+	/**
+	 * last_changed is intentionally NOT here — it's already in the hero
+	 * sub-line below the primary value, and a duplicate card under
+	 * "Device" was just visual noise. last_seen stays because it tracks
+	 * device aliveness (zigbee/ble "last heard from"), which is a
+	 * different signal from "state last changed".
+	 */
 	const DEVICE_INFO_KEYS: Array<[string, string, string]> = [
 		['battery_level', 'mdi:battery', 'battery'],
 		['battery_state', 'mdi:battery-charging', 'battery_state'],
@@ -92,8 +99,7 @@
 		['rssi', 'mdi:wifi-strength-2', 'rssi'],
 		['linkquality', 'mdi:zigbee', 'linkquality'],
 		['voltage', 'mdi:flash', 'voltage'],
-		['last_seen', 'mdi:clock-outline', 'last_seen'],
-		['last_changed', 'mdi:clock-outline', 'last_changed']
+		['last_seen', 'mdi:clock-outline', 'last_seen']
 	];
 
 	$: deviceInfo = (() => {
@@ -112,16 +118,14 @@
 		for (const [key, icon, labelKey] of DEVICE_INFO_KEYS) {
 			if (key === 'battery_level' && batteryEntity) continue; /* already shown */
 
-			let raw: any;
-			if (key === 'last_changed') raw = entity?.last_changed;
-			else raw = attributes?.[key];
+			const raw = attributes?.[key];
 			if (raw === undefined || raw === null || raw === '') continue;
 
 			let display: string;
 			if (key === 'battery_level') display = `${fmt(raw, 0)} %`;
 			else if (key === 'signal_strength' || key === 'rssi') display = `${fmt(raw, 0)} dBm`;
 			else if (key === 'voltage') display = `${fmt(raw, 2)} V`;
-			else if (key === 'last_seen' || key === 'last_changed') {
+			else if (key === 'last_seen') {
 				const d = asDate(raw);
 				display = d ? relativeTime(d.toISOString(), $selectedLanguage) : String(raw);
 			} else display = String(raw);
